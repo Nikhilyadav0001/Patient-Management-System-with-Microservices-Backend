@@ -72,6 +72,4 @@ public class PatientController {
 	    patientService.deletePatient(id);
 	    return ResponseEntity.ok(Map.of("message", "Patient deleted successfully"));
 	}
-	
-	
 }
