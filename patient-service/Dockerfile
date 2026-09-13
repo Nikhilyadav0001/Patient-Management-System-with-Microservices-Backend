@@ -1,4 +1,4 @@
-#with maven and jdk 21
+#with maven and jdk 25
 FROM maven:3-eclipse-temurin-25 AS builder
 
 WORKDIR /app
