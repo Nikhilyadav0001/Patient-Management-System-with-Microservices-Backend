@@ -1,1 +1,38 @@
 /.metadata/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# SonarLint local analysis cache
+.sonarlint/
+
+# Build output
+build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# Logs
+*.log
+logs/
+
+# Runtime/crash output
+hs_err_pid*
+replay_pid*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Local environment/config overrides
+.env
+.env.*
+!.env.example
