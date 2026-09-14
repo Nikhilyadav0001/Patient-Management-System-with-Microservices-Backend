@@ -88,7 +88,7 @@ public class PaitentService {
 	
 	//delete patient
 	public void deletePatient(UUID id) {
-	    patientRepository.deleteById(id);
+		patientRepository.deleteById(id);
 	  }
 	
 }
