@@ -1,6 +1,8 @@
-###GET request to get all patients
-###GET http://localhost:4000/patients
+### GET request to get all patients
+### GET http://localhost:4000/patients
+### GET http://localhost:4004/api/patients
 
-GET http://localhost:4004/api/patients
+GET http://patient-management-APIG-a3b4cef2-025d92a94a374142.elb.localhost.floci.io/api/patients
 Authorization: Bearer {{token}}
+
 ###

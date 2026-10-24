@@ -1,4 +1,8 @@
 ### GET request to validate Token
 ### GET http://localhost:4005/validate
-GET http://localhost:4004/auth/validate
+### GET http://localhost:4004/auth/validate
+
+GET http://patient-management-APIG-a3b4cef2-025d92a94a374142.elb.localhost.floci.io/auth/validate
 Authorization: Bearer {{token}}
+
+###

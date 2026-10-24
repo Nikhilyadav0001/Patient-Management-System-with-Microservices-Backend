@@ -19,6 +19,7 @@ import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ecs.AwsLogDriverProps;
 import software.amazon.awscdk.services.ecs.CloudMapNamespaceOptions;
+import software.amazon.awscdk.services.ecs.CloudMapOptions;
 import software.amazon.awscdk.services.ecs.Cluster;
 import software.amazon.awscdk.services.ecs.ContainerDefinitionOptions;
 import software.amazon.awscdk.services.ecs.ContainerImage;
@@ -28,6 +29,7 @@ import software.amazon.awscdk.services.ecs.LogDriver;
 import software.amazon.awscdk.services.ecs.PortMapping;
 import software.amazon.awscdk.services.ecs.Protocol;
 import software.amazon.awscdk.services.ecs.patterns.ApplicationLoadBalancedFargateService;
+import software.amazon.awscdk.services.elasticloadbalancingv2.HealthCheck;
 import software.amazon.awscdk.services.logs.LogGroup;
 import software.amazon.awscdk.services.logs.RetentionDays;
 import software.amazon.awscdk.services.msk.CfnCluster;
@@ -50,7 +52,7 @@ public class LocalStack extends Stack {
                 createDatabase("AuthServiceDB","auth-service-db");
 
         DatabaseInstance patientServiceDb =
-                createDatabase("PatientServiceDB","Patient-service-db");
+                createDatabase("PatientServiceDB","patient-service-db");
 
         CfnHealthCheck authDbHealthCheck =
                 createDbHealthCheck(authServiceDb,"AuthServiceDBHealthCheck");
@@ -84,7 +86,7 @@ public class LocalStack extends Stack {
                         "analytics-service",
                         List.of(4002),
                         null,
-                        null);
+                        Map.of("SERVER_PORT", "4002"));
 
         analyticsService.getNode().addDependency(mskCluster);
 
@@ -93,8 +95,7 @@ public class LocalStack extends Stack {
                 List.of(4000),
                 patientServiceDb,
                 Map.of(
-                        //because local stack do not implement ecs cloud discovery so we use this port
-                        "BILLING_SERVICE_ADDRESS", "host.docker.internal",
+                        "BILLING_SERVICE_ADDRESS", "billing-service",
                         "BILLING_SERVICE_GRPC_PORT", "9001"
                 ));
         patientService.getNode().addDependency(patientServiceDb);
@@ -129,6 +130,7 @@ public class LocalStack extends Stack {
                 .allocatedStorage(20)
                 .credentials(Credentials.fromGeneratedSecret("admin_user"))
                 .databaseName(dbName)
+                .instanceIdentifier(dbName.toLowerCase())
                 .removalPolicy(RemovalPolicy.DESTROY)
                 .build();
     }
@@ -150,7 +152,7 @@ public class LocalStack extends Stack {
     //create msk cluster for kafka
     private CfnCluster createMskCluster(){
         return CfnCluster.Builder.create(this, "MskCluster")
-                .clusterName("kafa-cluster")
+                .clusterName("kafka-cluster")
                 .kafkaVersion("2.8.0")
                 .numberOfBrokerNodes(1)
                 .brokerNodeGroupInfo(CfnCluster.BrokerNodeGroupInfoProperty.builder()
@@ -191,6 +193,7 @@ public class LocalStack extends Stack {
         ContainerDefinitionOptions.Builder containerOptions =
                 ContainerDefinitionOptions.builder()
                         .image(ContainerImage.fromRegistry(imageName))
+                        .dockerLabels(Map.of("com.docker.compose.project", "patient-management"))
                         .portMappings(ports.stream()
                                 .map(port -> PortMapping.builder()
                                         .containerPort(port)
@@ -208,17 +211,20 @@ public class LocalStack extends Stack {
                                 .build()));
 
         Map<String, String> envVars = new HashMap<>();
-        envVars.put("SPRING_KAFKA_BOOTSTRAP_SERVERS", "localhost.localstack.cloud:4510, localhost.localstack.cloud:4511, localhost.localstack.cloud:4512");
+        // Floci MSK Kafka cluster endpoint
+        envVars.put("SPRING_KAFKA_BOOTSTRAP_SERVERS", "kafka-cluster:9092");
+        envVars.put("SPRING_KAFKA_BOOTSTRAP_SERVER", "kafka-cluster:9092");
+        envVars.put("LOGGING_LEVEL_ORG_APACHE_KAFKA", "WARN");
 
         if(additionalEnvVars != null){
             envVars.putAll(additionalEnvVars);
         }
 
         if(db != null){
-            envVars.put("SPRING_DATASOURCE_URL", "jdbc:postgresql://%s:%s/%s-db".formatted(
+            envVars.put("SPRING_DATASOURCE_URL", "jdbc:postgresql://%s:%s/%s".formatted(
                     db.getDbInstanceEndpointAddress(),
                     db.getDbInstanceEndpointPort(),
-                    imageName
+                    imageName.equals("auth-service") ? "auth-service-db" : "patient-service-db"
             ));
             envVars.put("SPRING_DATASOURCE_USERNAME", "admin_user");
             envVars.put("SPRING_DATASOURCE_PASSWORD",
@@ -228,7 +234,7 @@ public class LocalStack extends Stack {
             envVars.put("SPRING_DATASOURCE_HIKARI_INITIALIZATION_FAIL_TIMEOUT", "60000");
         }
 
-        //adding the env variable to conatiner
+        //adding the env variable to container
         containerOptions.environment(envVars);
         taskDefinition.addContainer(imageName + "Container", containerOptions.build());
 
@@ -240,7 +246,7 @@ public class LocalStack extends Stack {
                 .build();
     }
 
-    //create gate with applicaation load balancer
+    //create gate with application load balancer
     private void createApiGatewayService() {
         FargateTaskDefinition taskDefinition =
                 FargateTaskDefinition.Builder.create(this, "APIGatewayTaskDefinition")
@@ -251,9 +257,10 @@ public class LocalStack extends Stack {
         ContainerDefinitionOptions containerOptions =
                 ContainerDefinitionOptions.builder()
                         .image(ContainerImage.fromRegistry("api-gateway"))
+                        .dockerLabels(Map.of("com.docker.compose.project", "patient-management"))
                         .environment(Map.of(
                                 "SPRING_PROFILES_ACTIVE", "prod",
-                                "AUTH_SERVICE_URL", "http://host.docker.internal:4005"
+                                "AUTH_SERVICE_URL", "http://auth-service:4005"
                         ))
                         .portMappings(List.of(4004).stream()
                                 .map(port -> PortMapping.builder()
@@ -283,20 +290,26 @@ public class LocalStack extends Stack {
                         .desiredCount(1)
                         .healthCheckGracePeriod(Duration.seconds(60))
                         .build();
+
+        apiGateway.getTargetGroup().configureHealthCheck(
+                HealthCheck.builder()
+                        .healthyHttpCodes("200-499")
+                        .build()
+        );
     }
 
 
 
     public static void main(final String[] args) {
-        App app = new App(AppProps.builder().outdir("infrastructure/cdk.out").build());
+        String outDir = java.nio.file.Files.exists(java.nio.file.Paths.get("infrastructure")) 
+                ? "infrastructure/cdk.out" 
+                : "cdk.out";
+        App app = new App(AppProps.builder().outdir(outDir).build());
         StackProps props = StackProps.builder()
                 .synthesizer(new BootstraplessSynthesizer())
                 .build();
 
-        //take that stack adds any props and
-        // then convert it into cloud formation template
-        //and hit everything into cdk.out
-        new LocalStack(app, "localstask", props);
+        new LocalStack(app, "localstack", props);
         app.synth();
     }
 }

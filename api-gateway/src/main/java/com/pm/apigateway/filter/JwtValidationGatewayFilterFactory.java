@@ -39,7 +39,6 @@ public class JwtValidationGatewayFilterFactory extends
                     .retrieve()
                     .toBodilessEntity()
                     .then(chain.filter(exchange))
-                    // Fix: Return 401 instead of crashing with HTTP 500 when auth fails
                     .onErrorResume(WebClientResponseException.class, ex -> {
                         exchange.getResponse().setStatusCode(ex.getStatusCode());
                         return exchange.getResponse().setComplete();

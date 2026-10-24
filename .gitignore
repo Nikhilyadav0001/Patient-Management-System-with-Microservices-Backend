@@ -1,4 +1,7 @@
 /.metadata/
+.git 
+.agents
+.metadata
 
 # IntelliJ IDEA
 .idea/

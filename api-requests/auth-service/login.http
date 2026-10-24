@@ -1,6 +1,8 @@
-### Login request to retrive a token
+### POST request to authenticate and get JWT token
 ### POST http://localhost:4005/login
-POST http://localhost:4004/auth/login
+### POST http://localhost:4004/auth/login
+
+POST http://patient-management-APIG-a3b4cef2-025d92a94a374142.elb.localhost.floci.io/auth/login
 Content-Type: application/json
 
 {
@@ -9,3 +11,5 @@ Content-Type: application/json
 }
 
 > {% client.global.set("token", response.body.token) %}
+
+###

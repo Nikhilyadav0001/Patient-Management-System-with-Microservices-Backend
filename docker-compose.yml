@@ -1,0 +1,144 @@
+name: patient-management-local-depl
+
+services:
+  auth-service-db:
+    image: postgres:latest
+    container_name: auth-service-db
+    environment:
+      POSTGRES_USER: admin_user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db
+    ports:
+      - "5001:5432"
+    volumes:
+      - C:\Users\nikhi\db_volumes\auth-service-db:/var/lib/postgresql
+    networks:
+      - internal
+
+  patient-service-db:
+    image: postgres:latest
+    container_name: patient-service-db
+    environment:
+      POSTGRES_USER: admin_user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db
+    ports:
+      - "5000:5432"
+    volumes:
+      - C:\Users\nikhi\db_volumes\patient-service-db:/var/lib/postgresql
+    networks:
+      - internal
+
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      KAFKA_NODE_ID: 0
+      KAFKA_PROCESS_ROLES: "controller,broker"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      internal:
+        aliases:
+          - kafka
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    image: auth-service:latest
+    container_name: auth-service
+    ports:
+      - "4005:4005"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-service-db:5432/db
+      SPRING_DATASOURCE_USERNAME: admin_user
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_SQL_INIT_MODE: always
+      JWT_SECRET: z8CGu3RL4Y1Tq6FDmMJhBgebQRrjwU69EgKqJjtlSMe
+    depends_on:
+      - auth-service-db
+    networks:
+      - internal
+
+  billing-service:
+    build:
+      context: ./billing-service
+      dockerfile: Dockerfile
+    image: billing-service:latest
+    container_name: billing-service
+    ports:
+      - "4001:4001"
+      - "9001:9001"
+    networks:
+      - internal
+
+  patient-service:
+    build:
+      context: ./patient-service
+      dockerfile: Dockerfile
+    image: patient-service:latest
+    container_name: patient-service
+    ports:
+      - "4000:4000"
+    environment:
+      BILLING_SERVICE_ADDRESS: billing-service
+      BILLING_SERVICE_GRPC_PORT: 9001
+      SPRING_DATASOURCE_URL: jdbc:postgresql://patient-service-db:5432/db
+      SPRING_DATASOURCE_USERNAME: admin_user
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_SQL_INIT_MODE: always
+      SPRING_KAFKA_BOOTSTRAP_SERVER: kafka:9092
+    depends_on:
+      - patient-service-db
+      - billing-service
+      - kafka
+    networks:
+      - internal
+
+  analytics-service:
+    build:
+      context: ./analytics-service
+      dockerfile: Dockerfile
+    image: analytics-service:latest
+    container_name: analytics-service
+    ports:
+      - "4002:4002"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - internal
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    image: api-gateway:latest
+    container_name: api-gateway
+    ports:
+      - "4004:4004"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:4005
+    depends_on:
+      - auth-service
+    networks:
+      - internal
+
+networks:
+  internal:
+    external: true
